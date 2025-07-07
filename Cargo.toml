@@ -2,6 +2,17 @@
 name = "ratcrates"
 version = "0.1.0"
 edition = "2024"
+description = "Discover and manage ratatui terminal applications"
+authors = ["Your Name <qfey@icloud.com>"]
+license = "MIT"
+repository = "https://github.com/rvbug/ratcrates"
+readme = "README.md"
+keywords = ["tui", "terminal", "ratatui", "cli"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "ratcrates"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.98"
