@@ -160,10 +160,26 @@ I want to add few more to the above list
 
 
 
+# Crate Submission
+This is run when user is ready to submit this crate
 
+```bash
+$> ratcrates submit
 
+# Interactive prompts:
+# 📦 Package name: my-awesome-tui
+# 📝 Description: A cool terminal app that does X
+# 🏷️  Category: [1] Media [2] Development [3] System [4] Games [5] Other
+# 🔗 Repository URL: https://github.com/user/my-awesome-tui
+# 📋 Crate name (if different): my-awesome-tui
+# 📄 License: MIT
+# 🏷️  Tags (comma-separated): music, player, terminal
+# 📸 Screenshot URL (optional): https://...
+# 📋 Installation notes (optional): Requires API key
+# 
+# ✅ Submission created! Check your email for approval status.
 
-
+```
 
 
 
