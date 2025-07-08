@@ -78,8 +78,6 @@
 
 
 
-
-
 # Technical Details
 
 
@@ -159,6 +157,26 @@ I want to add few more to the above list
 
 
 
+# Additional Data available
+- keywords - For faster search?
+- catagories - For categorization
+- badges - Might indicate project status/quality
+- created_at - First created date
+- downloads - Overall popularity
+- recent_downloads - Recent trending
+- default_version - stable version
+- num_version - # of version published
+- yanked - Bool if crates is actively maintained
+- newest_version - max version
+- description - What does crate do
+- homepage - URL
+- documentation -usage guide
+- repository - where source code is hosted (e.g. github)
+- links - UTLD to various API endpoints to access more data programitically
+- 
+
+
+
 # Crate Submission
 This is run when user is ready to submit this crate
 
@@ -180,7 +198,10 @@ $> ratcrates submit
 
 ```
 
-
+# Notes
+JSON has built-in two structures
+- Name-Value pairs which is known as an 'Object" = Known as objects, record, struct, dict, hash table or associative array
+- Ordered list of values called "Arrays" - Array, Vector, or list
 
 
 
