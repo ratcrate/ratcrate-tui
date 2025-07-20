@@ -8,12 +8,13 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
 use serde::Deserialize;
-use std::{error::Error, io};
+use std::{error::Error, io, path::PathBuf, process::Command};
 use tokio::sync::mpsc;
+use tempfile::TempDir;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -28,6 +29,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut app = App::new();
     let res = run(&mut terminal, &mut app).await;
+
+    // Cleanup temp installations before exit
+    app.cleanup_temp_installs();
 
     // Proper cleanup
     disable_raw_mode()?;
@@ -70,30 +74,46 @@ struct Crate {
     description: Option<String>,
 }
 
+struct TempInstall {
+    crate_name: String,
+    temp_dir: TempDir,
+    cargo_home: PathBuf,
+    binary_path: PathBuf,
+}
+
 struct App {
     items: Vec<Crate>,
     selected: usize,
+    list_state: ListState,
     cmd_buffer: String,
     cmd_mode: bool,
     loading: bool,
     error: Option<String>,
     rx: Option<mpsc::UnboundedReceiver<FetchResult>>,
     show_welcome: bool,
+    temp_installs: Vec<TempInstall>,
+    status_message: Option<String>,
 }
 
 type FetchResult = Result<Vec<Crate>, String>;
 
 impl App {
     fn new() -> Self {
+        let mut list_state = ListState::default();
+        list_state.select(Some(0));
+        
         let mut app = Self {
             items: vec![],
             selected: 0,
+            list_state,
             cmd_buffer: String::new(),
             cmd_mode: false,
             loading: false,
             error: None,
             rx: None,
             show_welcome: true,
+            temp_installs: Vec::new(),
+            status_message: None,
         };
         app.spawn_fetch();
         app
@@ -118,6 +138,7 @@ impl App {
     fn next(&mut self) {
         if !self.items.is_empty() {
             self.selected = (self.selected + 1) % self.items.len();
+            self.list_state.select(Some(self.selected));
         }
     }
 
@@ -128,6 +149,7 @@ impl App {
             } else {
                 self.selected - 1
             };
+            self.list_state.select(Some(self.selected));
         }
     }
 
@@ -153,6 +175,180 @@ impl App {
         self.cmd_buffer.pop();
     }
 
+    fn try_install_crate(&mut self) {
+        if self.items.is_empty() {
+            self.status_message = Some("No crates available".to_string());
+            return;
+        }
+
+        let selected_crate = &self.items[self.selected];
+        let crate_name = &selected_crate.name;
+
+        // Check if already installed temporarily
+        if self.temp_installs.iter().any(|install| install.crate_name == *crate_name) {
+            self.status_message = Some(format!("{} is already installed temporarily", crate_name));
+            return;
+        }
+
+        self.status_message = Some(format!("Installing {} temporarily...", crate_name));
+        
+        match self.install_crate_temp(crate_name) {
+            Ok(temp_install) => {
+                // Clone the binary_path before moving temp_install
+                let binary_path = temp_install.binary_path.clone();
+                self.temp_installs.push(temp_install);
+                self.status_message = Some(format!(
+                    "{} installed temporarily! Run with: {}",
+                    crate_name, binary_path.display()
+                ));
+            }
+            Err(err) => {
+                self.status_message = Some(format!("Failed to install {}: {}", crate_name, err));
+            }
+        }
+    }
+
+    fn install_crate_temp(&self, crate_name: &str) -> Result<TempInstall, String> {
+        // Create temporary directory
+        let temp_dir = TempDir::new()
+            .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+        
+        let cargo_home = temp_dir.path().join("cargo_home");
+        let cargo_bin = cargo_home.join("bin");
+        
+        // Create cargo home directory structure
+        std::fs::create_dir_all(&cargo_bin)
+            .map_err(|e| format!("Failed to create cargo directories: {}", e))?;
+
+        // Install the crate with custom CARGO_HOME
+        let output = Command::new("cargo")
+            .args(&["install", crate_name])
+            .env("CARGO_HOME", &cargo_home)
+            .output()
+            .map_err(|e| format!("Failed to execute cargo install: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Cargo install failed: {}", stderr));
+        }
+
+        // Find the installed binary
+        let binary_path = cargo_bin.join(crate_name);
+        
+        // Check if binary exists, if not try common variations
+        let actual_binary_path = if binary_path.exists() {
+            binary_path
+        } else {
+            // Sometimes the binary name differs from crate name
+            std::fs::read_dir(&cargo_bin)
+                .map_err(|e| format!("Failed to read bin directory: {}", e))?
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .find(|path| path.is_file())
+                .ok_or_else(|| "No binary found in installation".to_string())?
+        };
+
+        Ok(TempInstall {
+            crate_name: crate_name.to_string(),
+            temp_dir,
+            cargo_home,
+            binary_path: actual_binary_path,
+        })
+    }
+
+    fn install_crate_permanent(&mut self) {
+        if self.items.is_empty() {
+            self.status_message = Some("No crates available".to_string());
+            return;
+        }
+
+        let selected_crate = &self.items[self.selected];
+        let crate_name = &selected_crate.name;
+
+        self.status_message = Some(format!("Installing {} permanently...", crate_name));
+
+        let output = Command::new("cargo")
+            .args(&["install", crate_name])
+            .output();
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    self.status_message = Some(format!("{} installed permanently!", crate_name));
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    self.status_message = Some(format!("Failed to install {}: {}", crate_name, stderr));
+                }
+            }
+            Err(err) => {
+                self.status_message = Some(format!("Failed to execute cargo install: {}", err));
+            }
+        }
+    }
+
+    fn run_temp_crate(&mut self) {
+        if self.items.is_empty() {
+            self.status_message = Some("No crates available".to_string());
+            return;
+        }
+
+        let selected_crate = &self.items[self.selected];
+        let crate_name = &selected_crate.name;
+
+        // Find the temp installation
+        if let Some(install) = self.temp_installs.iter().find(|i| i.crate_name == *crate_name) {
+            self.status_message = Some(format!("Running {}...", crate_name));
+            
+            // Exit the TUI temporarily to run the program
+            let _ = disable_raw_mode();
+            let _ = execute!(
+                io::stdout(),
+                LeaveAlternateScreen,
+                cursor::Show
+            );
+
+            // Run the binary
+            let status = Command::new(&install.binary_path)
+                .status();
+
+            // Restore the TUI
+            let _ = enable_raw_mode();
+            let _ = execute!(io::stdout(), EnterAlternateScreen);
+
+            match status {
+                Ok(exit_status) => {
+                    if exit_status.success() {
+                        self.status_message = Some(format!("{} executed successfully", crate_name));
+                    } else {
+                        self.status_message = Some(format!("{} exited with error", crate_name));
+                    }
+                }
+                Err(err) => {
+                    self.status_message = Some(format!("Failed to run {}: {}", crate_name, err));
+                }
+            }
+        } else {
+            self.status_message = Some(format!("{} is not installed temporarily. Use :try first", crate_name));
+        }
+    }
+
+    fn cleanup_temp_installs(&mut self) {
+        // TempDir automatically cleans up when dropped
+        self.temp_installs.clear();
+    }
+
+    fn list_temp_installs(&self) -> String {
+        if self.temp_installs.is_empty() {
+            "No temporary installations".to_string()
+        } else {
+            let mut list = "Temporary installations:\n".to_string();
+            for install in &self.temp_installs {
+                list.push_str(&format!("• {} ({})\n", install.crate_name, install.binary_path.display()));
+            }
+            list
+        }
+    }
+
     fn check_fetch_result(&mut self) {
         if let Some(rx) = &mut self.rx {
             if let Ok(result) = rx.try_recv() {
@@ -165,6 +361,7 @@ impl App {
                             self.error = None;
                         }
                         self.selected = 0;
+                        self.list_state.select(Some(0));
                         self.show_welcome = false; // Hide welcome message when data loads
                     }
                     Err(err) => {
@@ -223,10 +420,6 @@ async fn run<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Resul
             } else {
                 handle_normal_mode(app, key);
             }
-
-            if key.code == KeyCode::Char('q') && !app.cmd_mode {
-                // Remove the 'q' quit functionality since we now use ':q'
-            }
         }
     }
 }
@@ -252,9 +445,25 @@ fn handle_cmd_mode(app: &mut App, key: KeyEvent) {
         KeyCode::Enter => {
             let cmd = app.cmd_buffer.trim();
             match cmd {
-                "pkg list" => app.spawn_fetch(),
+                "pkg list" => {
+                    app.spawn_fetch();
+                    app.status_message = Some("Refreshing package list...".to_string());
+                }
+                "try" => {
+                    app.try_install_crate();
+                }
+                "run" => {
+                    app.run_temp_crate();
+                }
+                "install" => {
+                    app.install_crate_permanent();
+                }
+                "temp" => {
+                    app.status_message = Some(app.list_temp_installs());
+                }
                 "q" => {
-                    // Proper cleanup before exit
+                    // Cleanup before exit
+                    app.cleanup_temp_installs();
                     let _ = disable_raw_mode();
                     let _ = execute!(
                         io::stdout(),
@@ -265,8 +474,13 @@ fn handle_cmd_mode(app: &mut App, key: KeyEvent) {
                     );
                     std::process::exit(0);
                 }
-                "help" | "h" => app.show_help(),
-                _ => {} // TODO: unknown command feedback
+                "help" | "h" => {
+                    app.show_help();
+                    app.status_message = None;
+                }
+                _ => {
+                    app.status_message = Some(format!("Unknown command: {}", cmd));
+                }
             }
             app.exit_cmd_mode();
         }
@@ -292,35 +506,52 @@ fn ui(f: &mut Frame, app: &App) {
         .iter()
         .enumerate()
         .map(|(i, k)| {
-            let style = if i == app.selected {
+            let mut style = if i == app.selected {
                 Style::default().fg(Color::Yellow)
             } else {
                 Style::default()
             };
+
+            // Highlight temporarily installed crates
+            if app.temp_installs.iter().any(|install| install.crate_name == k.name) {
+                style = style.fg(Color::Green);
+            }
+
             ListItem::new(k.name.as_str()).style(style)
         })
         .collect();
 
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Packages"));
-    f.render_widget(list, top[0]);
+    let mut list = List::new(items).block(Block::default().borders(Borders::ALL).title("Packages"));
+    
+    // Use stateful rendering for proper scrolling
+    f.render_stateful_widget(list, top[0], &mut app.list_state.clone());
 
     let detail_text = if app.show_welcome {
-        "🦀 Rust Crate Explorer - Ratatui Edition\n\n\
-        Welcome to the Rust Crate Explorer! This tool allows you to search\n\
-        and browse crates from crates.io that are related to 'ratatui'.\n\n\
+        "🦀 Rust Crate Explorer - Safe Edition\n\n\
+        Welcome to the Safe Rust Crate Explorer! This tool allows you to\n\
+        search, browse, and install crates from crates.io safely.\n\n\
         📋 COMMANDS:\n\
         • :pkg list    - Refresh the package list\n\
-        • :q           - Quit the application\n\n\
+        • :try         - Install selected crate temporarily\n\
+        • :run         - Run temporarily installed crate\n\
+        • :install     - Install selected crate permanently\n\
+        • :temp        - List temporary installations\n\
+        • :help / :h   - Show this help\n\
+        • :q           - Quit (cleans up temp installs)\n\n\
         🔤 NAVIGATION:\n\
         • j / ↓        - Move down in the list\n\
         • k / ↑        - Move up in the list\n\
         • :            - Enter command mode\n\
         • ESC          - Exit command mode\n\n\
         📦 FEATURES:\n\
-        • Browse ratatui-related crates\n\
-        • View crate details and descriptions\n\
-        • Real-time loading with async support\n\n\
+        • Try crates without permanent installation\n\
+        • Run temporary installations directly\n\
+        • No unsafe code - fully safe Rust\n\
+        • Automatic cleanup on exit\n\
+        • Green highlighting for temp-installed crates\n\n\
         Press any navigation key to start exploring!"
+    } else if let Some(status) = &app.status_message {
+        status.as_str()
     } else if let Some(err) = &app.error {
         err.as_str()
     } else if app.items.is_empty() {
@@ -331,9 +562,13 @@ fn ui(f: &mut Frame, app: &App) {
         }
     } else {
         let selected_crate = &app.items[app.selected];
-        &format!("{} ({})\n{}", 
+        let is_temp_installed = app.temp_installs.iter().any(|install| install.crate_name == selected_crate.name);
+        let temp_status = if is_temp_installed { " [TEMP INSTALLED]" } else { "" };
+        
+        &format!("{} ({}){}\n\n{}", 
             selected_crate.name, 
             selected_crate.max_version,
+            temp_status,
             selected_crate.description.as_deref().unwrap_or("No description available")
         )
     };
@@ -344,7 +579,7 @@ fn ui(f: &mut Frame, app: &App) {
     let prompt = if app.cmd_mode {
         format!(":{}", app.cmd_buffer)
     } else {
-        "Press ':' for commands | Available: :pkg list, :help, :h, :q".to_string()
+        "Commands: :try, :run, :install, :temp, :pkg list, :help, :q | Navigate: j/k or ↓/↑".to_string()
     };
     let prompt_widget = Paragraph::new(prompt);
     f.render_widget(prompt_widget, chunks[1]);
