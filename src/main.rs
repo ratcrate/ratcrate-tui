@@ -83,10 +83,13 @@ struct TempInstall {
 
 struct App {
     items: Vec<Crate>,
+    filtered_items: Vec<Crate>,
     selected: usize,
     list_state: ListState,
     cmd_buffer: String,
     cmd_mode: bool,
+    search_mode: bool,
+    search_buffer: String,
     loading: bool,
     error: Option<String>,
     rx: Option<mpsc::UnboundedReceiver<FetchResult>>,
@@ -104,10 +107,13 @@ impl App {
         
         let mut app = Self {
             items: vec![],
+            filtered_items: vec![],
             selected: 0,
             list_state,
             cmd_buffer: String::new(),
             cmd_mode: false,
+            search_mode: false,
+            search_buffer: String::new(),
             loading: false,
             error: None,
             rx: None,
@@ -135,17 +141,48 @@ impl App {
         });
     }
 
+    fn current_items(&self) -> &Vec<Crate> {
+        if self.search_buffer.is_empty() {
+            &self.items
+        } else {
+            &self.filtered_items
+        }
+    }
+
+    fn update_filtered_items(&mut self) {
+        if self.search_buffer.is_empty() {
+            self.filtered_items = self.items.clone();
+        } else {
+            let search_lower = self.search_buffer.to_lowercase();
+            self.filtered_items = self.items.iter()
+                .filter(|crate_item| {
+                    crate_item.name.to_lowercase().contains(&search_lower) ||
+                    crate_item.description.as_ref()
+                        .map(|desc| desc.to_lowercase().contains(&search_lower))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+        }
+        
+        // Reset selection to first item
+        self.selected = 0;
+        self.list_state.select(Some(0));
+    }
+
     fn next(&mut self) {
-        if !self.items.is_empty() {
-            self.selected = (self.selected + 1) % self.items.len();
+        let items = self.current_items();
+        if !items.is_empty() {
+            self.selected = (self.selected + 1) % items.len();
             self.list_state.select(Some(self.selected));
         }
     }
 
     fn prev(&mut self) {
-        if !self.items.is_empty() {
+        let items = self.current_items();
+        if !items.is_empty() {
             self.selected = if self.selected == 0 {
-                self.items.len() - 1
+                items.len() - 1
             } else {
                 self.selected - 1
             };
@@ -155,6 +192,7 @@ impl App {
 
     fn enter_cmd_mode(&mut self) {
         self.cmd_mode = true;
+        self.search_mode = false;
         self.cmd_buffer.clear();
     }
 
@@ -163,47 +201,77 @@ impl App {
         self.cmd_buffer.clear();
     }
 
+    fn enter_search_mode(&mut self) {
+        self.search_mode = true;
+        self.cmd_mode = false;
+    }
+
+    fn exit_search_mode(&mut self) {
+        self.search_mode = false;
+        self.search_buffer.clear();
+        self.update_filtered_items();
+    }
+
     fn push_char(&mut self, c: char) {
-        self.cmd_buffer.push(c);
+        if self.search_mode {
+            self.search_buffer.push(c);
+            self.update_filtered_items();
+        } else {
+            self.cmd_buffer.push(c);
+        }
+    }
+
+    fn pop_char(&mut self) {
+        if self.search_mode {
+            self.search_buffer.pop();
+            self.update_filtered_items();
+        } else {
+            self.cmd_buffer.pop();
+        }
     }
 
     fn show_help(&mut self) {
         self.show_welcome = true;
     }
 
-    fn pop_char(&mut self) {
-        self.cmd_buffer.pop();
-    }
-
     fn try_install_crate(&mut self) {
-        if self.items.is_empty() {
-            self.status_message = Some("No crates available".to_string());
+        let items = self.current_items();
+        if items.is_empty() {
+            let message = "No crates available".to_string();
+            self.status_message = Some(message);
             return;
         }
 
-        let selected_crate = &self.items[self.selected];
-        let crate_name = &selected_crate.name;
+        let selected_crate = &items[self.selected];
+        let crate_name = selected_crate.name.clone(); // Clone to avoid borrowing issues
 
         // Check if already installed temporarily
-        if self.temp_installs.iter().any(|install| install.crate_name == *crate_name) {
-            self.status_message = Some(format!("{} is already installed temporarily", crate_name));
+        if self.temp_installs.iter().any(|install| install.crate_name == crate_name) {
+            let message = format!("{} is already installed temporarily", crate_name);
+            self.status_message = Some(message);
             return;
         }
 
-        self.status_message = Some(format!("Installing {} temporarily...", crate_name));
+        let installing_message = format!("Installing {} temporarily...", crate_name);
+        self.status_message = Some(installing_message);
         
-        match self.install_crate_temp(crate_name) {
+        match self.install_crate_temp(&crate_name) {
             Ok(temp_install) => {
-                // Clone the binary_path before moving temp_install
-                let binary_path = temp_install.binary_path.clone();
-                self.temp_installs.push(temp_install);
-                self.status_message = Some(format!(
+                // Create the success message before moving temp_install
+                let success_message = format!(
                     "{} installed temporarily! Run with: {}",
-                    crate_name, binary_path.display()
-                ));
+                    crate_name, temp_install.binary_path.display()
+                );
+                
+                // Now move temp_install into the vector
+                self.temp_installs.push(temp_install);
+                
+                // Set the status message
+                self.status_message = Some(success_message);
             }
             Err(err) => {
-                self.status_message = Some(format!("Failed to install {}: {}", crate_name, err));
+                let error_message = format!("Failed to install {}: {}", crate_name, err);
+                self.status_message = Some(error_message);
             }
         }
     }
@@ -257,47 +325,59 @@ impl App {
     }
 
     fn install_crate_permanent(&mut self) {
-        if self.items.is_empty() {
-            self.status_message = Some("No crates available".to_string());
+        let items = self.current_items();
+        if items.is_empty() {
+            let message = "No crates available".to_string();
+            self.status_message = Some(message);
             return;
         }
 
-        let selected_crate = &self.items[self.selected];
-        let crate_name = &selected_crate.name;
+        let selected_crate = &items[self.selected];
+        let crate_name = selected_crate.name.clone(); // Clone to avoid borrowing issues
 
-        self.status_message = Some(format!("Installing {} permanently...", crate_name));
+        let installing_message = format!("Installing {} permanently...", crate_name);
+        self.status_message = Some(installing_message);
 
         let output = Command::new("cargo")
-            .args(&["install", crate_name])
+            .args(&["install", &crate_name])
             .output();
 
         match output {
             Ok(output) => {
                 if output.status.success() {
-                    self.status_message = Some(format!("{} installed permanently!", crate_name));
+                    let success_message = format!("{} installed permanently!", crate_name);
+                    self.status_message = Some(success_message);
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    self.status_message = Some(format!("Failed to install {}: {}", crate_name, stderr));
+                    let error_message = format!("Failed to install {}: {}", crate_name, stderr);
+                    self.status_message = Some(error_message);
                 }
             }
             Err(err) => {
-                self.status_message = Some(format!("Failed to execute cargo install: {}", err));
+                let error_message = format!("Failed to execute cargo install: {}", err);
+                self.status_message = Some(error_message);
             }
         }
     }
 
     fn run_temp_crate(&mut self) {
-        if self.items.is_empty() {
-            self.status_message = Some("No crates available".to_string());
+        let items = self.current_items();
+        if items.is_empty() {
+            let message = "No crates available".to_string();
+            self.status_message = Some(message);
             return;
         }
 
-        let selected_crate = &self.items[self.selected];
-        let crate_name = &selected_crate.name;
+        let selected_crate = &items[self.selected];
+        let crate_name = selected_crate.name.clone(); // Clone to avoid borrowing issues
 
         // Find the temp installation
-        if let Some(install) = self.temp_installs.iter().find(|i| i.crate_name == *crate_name) {
-            self.status_message = Some(format!("Running {}...", crate_name));
+        if let Some(install) = self.temp_installs.iter().find(|i| i.crate_name == crate_name) {
+            let running_message = format!("Running {}...", crate_name);
+            self.status_message = Some(running_message);
+            
+            // Store the binary path to avoid borrowing issues
+            let binary_path = install.binary_path.clone();
             
             // Exit the TUI temporarily to run the program
             let _ = disable_raw_mode();
@@ -308,7 +388,7 @@ impl App {
             );
 
             // Run the binary
-            let status = Command::new(&install.binary_path)
+            let status = Command::new(&binary_path)
                 .status();
 
             // Restore the TUI
@@ -317,18 +397,21 @@ impl App {
 
             match status {
                 Ok(exit_status) => {
-                    if exit_status.success() {
-                        self.status_message = Some(format!("{} executed successfully", crate_name));
+                    let result_message = if exit_status.success() {
+                        format!("{} executed successfully", crate_name)
                     } else {
-                        self.status_message = Some(format!("{} exited with error", crate_name));
-                    }
+                        format!("{} exited with error", crate_name)
+                    };
+                    self.status_message = Some(result_message);
                 }
                 Err(err) => {
-                    self.status_message = Some(format!("Failed to run {}: {}", crate_name, err));
+                    let error_message = format!("Failed to run {}: {}", crate_name, err);
+                    self.status_message = Some(error_message);
                 }
             }
         } else {
-            self.status_message = Some(format!("{} is not installed temporarily. Use :try first", crate_name));
+            let message = format!("{} is not installed temporarily. Use :try first", crate_name);
+            self.status_message = Some(message);
         }
     }
 
@@ -355,6 +438,7 @@ impl App {
                 match result {
                     Ok(crates) => {
                         self.items = crates;
+                        self.update_filtered_items();
                         if self.items.is_empty() {
                             self.error = Some("No crates found".to_string());
                         } else {
@@ -435,6 +519,25 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) {
             app.show_welcome = false; // Hide welcome on navigation
         }
         KeyCode::Char(':') => app.enter_cmd_mode(),
+        KeyCode::Char('/') => {
+            app.enter_search_mode();
+            app.show_welcome = false;
+        }
+        KeyCode::Esc => {
+            if app.search_mode {
+                app.exit_search_mode();
+            }
+        }
+        KeyCode::Backspace => {
+            if app.search_mode {
+                app.pop_char();
+            }
+        }
+        KeyCode::Char(c) => {
+            if app.search_mode {
+                app.push_char(c);
+            }
+        }
         _ => {}
     }
 }
@@ -502,7 +605,7 @@ fn ui(f: &mut Frame, app: &App) {
         .split(chunks[0]);
 
     let items: Vec<_> = app
-        .items
+        .current_items()
         .iter()
         .enumerate()
         .map(|(i, k)| {
@@ -521,7 +624,13 @@ fn ui(f: &mut Frame, app: &App) {
         })
         .collect();
 
-    let mut list = List::new(items).block(Block::default().borders(Borders::ALL).title("Packages"));
+    let list_title = if app.search_mode && !app.search_buffer.is_empty() {
+        format!("Packages ({})", app.current_items().len())
+    } else {
+        "Packages".to_string()
+    };
+    
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title(list_title));
     
     // Use stateful rendering for proper scrolling
     f.render_stateful_widget(list, top[0], &mut app.list_state.clone());
@@ -542,10 +651,12 @@ fn ui(f: &mut Frame, app: &App) {
         • j / ↓        - Move down in the list\n\
         • k / ↑        - Move up in the list\n\
         • :            - Enter command mode\n\
-        • ESC          - Exit command mode\n\n\
+        • /            - Enter search mode (real-time filter)\n\
+        • ESC          - Exit command/search mode\n\n\
         📦 FEATURES:\n\
         • Try crates without permanent installation\n\
         • Run temporary installations directly\n\
+        • Real-time search through crate names and descriptions\n\
         • No unsafe code - fully safe Rust\n\
         • Automatic cleanup on exit\n\
         • Green highlighting for temp-installed crates\n\n\
@@ -554,14 +665,16 @@ fn ui(f: &mut Frame, app: &App) {
         status.as_str()
     } else if let Some(err) = &app.error {
         err.as_str()
-    } else if app.items.is_empty() {
+    } else if app.current_items().is_empty() {
         if app.loading {
             "Loading…"
+        } else if !app.search_buffer.is_empty() {
+            "No packages match your search"
         } else {
             "No packages"
         }
     } else {
-        let selected_crate = &app.items[app.selected];
+        let selected_crate = &app.current_items()[app.selected];
         let is_temp_installed = app.temp_installs.iter().any(|install| install.crate_name == selected_crate.name);
         let temp_status = if is_temp_installed { " [TEMP INSTALLED]" } else { "" };
         
@@ -578,9 +691,11 @@ fn ui(f: &mut Frame, app: &App) {
 
     let prompt = if app.cmd_mode {
         format!(":{}", app.cmd_buffer)
+    } else if app.search_mode {
+        format!("Search: {}", app.search_buffer)
     } else {
-        "Commands: :try, :run, :install, :temp, :pkg list, :help, :q | Navigate: j/k or ↓/↑".to_string()
+        "Commands: :try, :run, :install, :temp, :pkg list, :help, :q | Navigate: j/k or ↓/↑ | Search: /".to_string()
     };
     let prompt_widget = Paragraph::new(prompt);
     f.render_widget(prompt_widget, chunks[1]);
-}
+} 
