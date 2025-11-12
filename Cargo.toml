@@ -15,6 +15,14 @@ name = "ratcrates"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1.0.100"
+colored = "3.0.0"
+crossterm = "0.29.0"
+dirs = "6.0.0"
+ratatui = "0.29.0"
+reqwest = { version = "0.12.24", features = ["blocking", "json"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
 # anyhow = "1.0.98"
 # clap = "4.5.40"
 # colored = "3.0.0"
@@ -24,11 +32,25 @@ path = "src/main.rs"
 # serde_json = "1.0.140"
 # tabled = "0.20.0"
 # tokio = "1.46.1"
-ratatui = { version = "0.26", features = ["crossterm"] }
-crossterm = "0.27"
-tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tempfile = "3.8.0"
-chrono = "0.4.41"
+# ratatui = { version = "0.26", features = ["crossterm"] }
+# crossterm = "0.27"
+# tokio = { version = "1", features = ["full"] }
+# reqwest = { version = "0.12", features = ["json"] }
+# serde = { version = "1.0", features = ["derive"] }
+# serde_json = "1.0"
+# tempfile = "3.8.0"
+# chrono = "0.4.41"
+# dirs = "6.0.0"
+#
+# [dependencies]
+# # TUI Framework
+# ratatui = "0.29"
+# crossterm = "0.28"
+#
+# # Data handling (same as CLI)
+# serde = { version = "1.0", features = ["derive"] }
+# serde_json = "1.0"
+# reqwest = { version = "0.11", features = ["blocking", "json"] }
+# anyhow = "1.0"
+# dirs = "5.0"
+#
