@@ -32,6 +32,14 @@ use types::{CratePackage, CratesData};
 enum Mode {
     Normal,      // Navigation mode
     Command,     // Command mode (after pressing ':')
+    Try,         // Try mode - confirming installation
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum View {
+    List,        // List + Detail view
+    Stats,       // Statistics view
+    Help,        // Help view
 }
 
 struct App {
@@ -43,9 +51,13 @@ struct App {
     // UI State
     list_state: ListState,
     mode: Mode,
+    view: View,
     command_input: String,
     status_message: String,
-    show_help: bool,
+    
+    // Try mode
+    try_crate: Option<String>,
+    try_temp_dir: Option<String>,
     
     // Search state
     last_search: String,
@@ -58,22 +70,24 @@ impl App {
         
         let all_crates = data.crates.clone();
         let filtered_crates = all_crates.clone();
-        let metadata = data.metadata.clone();  // Clone here so we can use it twice
+        let metadata = data.metadata.clone();
         
         Self {
             all_crates,
             filtered_crates,
-            metadata: metadata.clone(),  // First use
+            metadata: metadata.clone(),
             list_state,
             mode: Mode::Normal,
+            view: View::List,
             command_input: String::new(),
             status_message: format!(
-                "Total: {} | Core: {} | Community: {} | Press ':' for commands or '?' for help",
+                "📦 {} crates | ⭐ {} core | 🌍 {} community | Press TAB for stats, ? for help, : for commands",
                 metadata.total_crates,
                 metadata.core_libraries,
-                metadata.community_packages  // Second use
+                metadata.community_packages
             ),
-            show_help: false,
+            try_crate: None,
+            try_temp_dir: None,
             last_search: String::new(),
         }
     }
@@ -227,12 +241,24 @@ impl App {
                 }
             }
             "help" | "?" => {
-                self.show_help = !self.show_help;
-                self.status_message = if self.show_help {
-                    "Showing help".to_string()
+                self.view = if self.view == View::Help { View::List } else { View::Help };
+                self.status_message = if self.view == View::Help {
+                    "Showing help - Press ? or TAB to go back".to_string()
                 } else {
                     "Help hidden".to_string()
                 };
+            }
+            "try" => {
+                if let Some(crate_pkg) = self.selected_crate().map(|c| c.clone()) {
+                    self.try_crate = Some(crate_pkg.name.clone());
+                    self.mode = Mode::Try;
+                    self.status_message = format!(
+                        "Try {} in temporary directory? Press 'y' to confirm, 'n' to cancel",
+                        crate_pkg.name
+                    );
+                } else {
+                    self.status_message = "No crate selected".to_string();
+                }
             }
             _ => {
                 // Try as search query
@@ -284,11 +310,11 @@ fn ui(f: &mut Frame, app: &mut App) {
     // Render list
     render_list(f, app, main_chunks[0]);
     
-    // Render detail
-    if app.show_help {
-        render_help(f, main_chunks[1]);
-    } else {
-        render_detail(f, app, main_chunks[1]);
+    // Render detail/help/stats based on view
+    match app.view {
+        View::List => render_detail(f, app, main_chunks[1]),
+        View::Help => render_help(f, main_chunks[1]),
+        View::Stats => render_stats(f, app, main_chunks[1]),
     }
     
     // Render command/status bar
@@ -299,20 +325,46 @@ fn render_list(f: &mut Frame, app: &mut App, area: Rect) {
     let items: Vec<ListItem> = app
         .filtered_crates
         .iter()
-        .map(|crate_pkg| {
+        .enumerate()
+        .map(|(idx, crate_pkg)| {
             let icon = if crate_pkg.is_core_library { "⭐" } else { "📦" };
-            let name = format!("{} {}", icon, crate_pkg.name);
             
-            ListItem::new(Line::from(vec![
-                Span::styled(
-                    name,
-                    if crate_pkg.is_core_library {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default().fg(Color::Cyan)
-                    },
-                ),
-            ]))
+            // Create a colorful list item
+            let content = vec![
+                Line::from(vec![
+                    Span::styled(
+                        format!("{} ", icon),
+                        if crate_pkg.is_core_library {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default().fg(Color::Cyan)
+                        },
+                    ),
+                    Span::styled(
+                        &crate_pkg.name,
+                        if crate_pkg.is_core_library {
+                            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                        },
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled("↓ ", Style::default().fg(Color::Green)),
+                    Span::styled(
+                        format_number(crate_pkg.downloads),
+                        Style::default().fg(Color::Green),
+                    ),
+                    Span::styled(" 📈 ", Style::default().fg(Color::Blue)),
+                    Span::styled(
+                        format_number(crate_pkg.recent_downloads),
+                        Style::default().fg(Color::Blue),
+                    ),
+                ]),
+            ];
+            
+            ListItem::new(content)
         })
         .collect();
     
@@ -320,16 +372,22 @@ fn render_list(f: &mut Frame, app: &mut App, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(format!(
-                    " Crates ({}/{}) ",
-                    app.filtered_crates.len(),
-                    app.all_crates.len()
-                ))
-                .style(Style::default().fg(Color::White)),
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(vec![
+                    Span::styled(" 📦 Crates ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("({}/{}) ",
+                            app.filtered_crates.len(),
+                            app.all_crates.len()
+                        ),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ])
+                .style(Style::default()),
         )
         .highlight_style(
             Style::default()
-                .bg(Color::DarkGray)
+                .bg(Color::Rgb(60, 60, 80))
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▶ ");
@@ -341,24 +399,24 @@ fn render_detail(f: &mut Frame, app: &App, area: Rect) {
     let detail = if let Some(crate_pkg) = app.selected_crate() {
         let mut lines = vec![];
         
-        // Title
+        // Title with colorful icon
         let icon = if crate_pkg.is_core_library { "⭐" } else { "📦" };
         lines.push(Line::from(vec![
             Span::styled(
                 format!("{} {} ", icon, crate_pkg.name),
                 Style::default()
                     .fg(if crate_pkg.is_core_library { Color::Yellow } else { Color::Cyan })
-                    .add_modifier(Modifier::BOLD),
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
             ),
             Span::styled(
                 format!("v{}", crate_pkg.version),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Magenta),
             ),
         ]));
         
         if crate_pkg.is_core_library {
             lines.push(Line::from(Span::styled(
-                "CORE LIBRARY",
+                "⭐ CORE LIBRARY ⭐",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
@@ -367,42 +425,59 @@ fn render_detail(f: &mut Frame, app: &App, area: Rect) {
         
         lines.push(Line::from(""));
         
-        // Description
+        // Description with nice formatting
         lines.push(Line::from(Span::styled(
-            "Description:",
+            "📝 Description:",
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         )));
-        lines.push(Line::from(crate_pkg.description.clone()));
+        
+        // Wrap long descriptions
+        let desc_lines: Vec<String> = crate_pkg.description
+            .as_str()
+            .chars()
+            .collect::<Vec<_>>()
+            .chunks(60)
+            .map(|c| c.iter().collect::<String>())
+            .collect::<Vec<_>>();
+        
+        for line in desc_lines.iter().take(3) {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", line),
+                Style::default().fg(Color::White),
+            )));
+        }
         lines.push(Line::from(""));
         
-        // Statistics
+        // Statistics with icons and colors
         lines.push(Line::from(Span::styled(
-            "Statistics:",
+            "📊 Statistics:",
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::from(vec![
-            Span::raw("  Downloads:        "),
+            Span::raw("  "),
+            Span::styled("↓ Downloads:       ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 format_number(crate_pkg.downloads),
-                Style::default().fg(Color::Green),
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
             ),
         ]));
         lines.push(Line::from(vec![
-            Span::raw("  Weekly Downloads: "),
+            Span::raw("  "),
+            Span::styled("📈 Weekly:          ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 format_number(crate_pkg.recent_downloads),
-                Style::default().fg(Color::Blue),
+                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
             ),
         ]));
         lines.push(Line::from(""));
         
-        // Install
+        // Install command with colorful box
         lines.push(Line::from(Span::styled(
-            "Install:",
+            "📦 Install:",
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
@@ -418,13 +493,22 @@ fn render_detail(f: &mut Frame, app: &App, area: Rect) {
         ]));
         lines.push(Line::from(""));
         
-        // Links
+        // Try mode hint
+        lines.push(Line::from(vec![
+            Span::styled("💡 Tip: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled("Use ", Style::default().fg(Color::DarkGray)),
+            Span::styled(":try", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(" to test this crate in a temporary project!", Style::default().fg(Color::DarkGray)),
+        ]));
+        lines.push(Line::from(""));
+        
+        // Links with icons
         if crate_pkg.repository.is_some()
             || crate_pkg.documentation.is_some()
             || crate_pkg.homepage.is_some()
         {
             lines.push(Line::from(Span::styled(
-                "Links:",
+                "🔗 Links:",
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
@@ -432,132 +516,416 @@ fn render_detail(f: &mut Frame, app: &App, area: Rect) {
             
             if let Some(repo) = &crate_pkg.repository {
                 lines.push(Line::from(vec![
-                    Span::raw("  Repository:    "),
+                    Span::raw("  "),
+                    Span::styled("📁 Repo:  ", Style::default().fg(Color::DarkGray)),
                     Span::styled(repo, Style::default().fg(Color::Blue)),
                 ]));
             }
             if let Some(docs) = &crate_pkg.documentation {
                 lines.push(Line::from(vec![
-                    Span::raw("  Documentation: "),
+                    Span::raw("  "),
+                    Span::styled("📖 Docs:  ", Style::default().fg(Color::DarkGray)),
                     Span::styled(docs, Style::default().fg(Color::Blue)),
                 ]));
             }
             if let Some(home) = &crate_pkg.homepage {
                 lines.push(Line::from(vec![
-                    Span::raw("  Homepage:      "),
+                    Span::raw("  "),
+                    Span::styled("🏠 Home:  ", Style::default().fg(Color::DarkGray)),
                     Span::styled(home, Style::default().fg(Color::Blue)),
                 ]));
             }
             lines.push(Line::from(""));
         }
         
-        // Categories
+        // Categories with colorful tags
         if let Some(categories) = &crate_pkg.categories {
             if !categories.is_empty() {
                 lines.push(Line::from(Span::styled(
-                    "Categories:",
+                    "🏷️  Categories:",
                     Style::default()
                         .fg(Color::Green)
                         .add_modifier(Modifier::BOLD),
                 )));
-                lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(
-                        categories.join(", "),
-                        Style::default().fg(Color::Magenta),
-                    ),
-                ]));
+                
+                let cat_spans: Vec<Span> = categories
+                    .iter()
+                    .flat_map(|cat| {
+                        vec![
+                            Span::styled("  [", Style::default().fg(Color::DarkGray)),
+                            Span::styled(
+                                cat,
+                                Style::default()
+                                    .fg(Color::Magenta)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled("]", Style::default().fg(Color::DarkGray)),
+                            Span::raw(" "),
+                        ]
+                    })
+                    .collect();
+                
+                lines.push(Line::from(cat_spans));
             }
         }
         
         Text::from(lines)
     } else {
-        Text::from("No crate selected")
+        Text::from(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "No crate selected",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Use j/k or ↑/↓ to navigate",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
     };
     
     let paragraph = Paragraph::new(detail)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Detail ")
-                .style(Style::default().fg(Color::White)),
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(Span::styled(
+                    " 📋 Detail ",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ))
+                .style(Style::default()),
         )
-        .wrap(Wrap { trim: true });
+        .wrap(Wrap { trim: false });
     
     f.render_widget(paragraph, area);
 }
 
 fn render_help(f: &mut Frame, area: Rect) {
     let help_text = vec![
+        Line::from(""),
         Line::from(Span::styled(
-            "RATCRATE TUI - Help",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            "╔═══════════════════════════════════════════════════════╗",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "║                                                       ║",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled("║   ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("🐀 RATCRATE TUI", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled("  - Ratatui Ecosystem Explorer   ║", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(Span::styled(
+            "║                                                       ║",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "╚═══════════════════════════════════════════════════════╝",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Navigation:",
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  j / ↓      - Move down"),
-        Line::from("  k / ↑      - Move up"),
-        Line::from("  h          - (reserved)"),
-        Line::from("  l          - (reserved)"),
-        Line::from("  Ctrl+d     - Page down"),
-        Line::from("  Ctrl+u     - Page up"),
-        Line::from("  g          - Go to top"),
-        Line::from("  G          - Go to bottom"),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Commands (press ':'):",
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  :q, :quit         - Quit"),
-        Line::from("  :all              - Show all crates"),
-        Line::from("  :core             - Show core libraries only"),
-        Line::from("  :top [N]          - Show top N by downloads (default: 10)"),
-        Line::from("  :recent [N]       - Show top N by weekly downloads"),
-        Line::from("  :new [N]          - Show N newest crates"),
-        Line::from("  :search <query>   - Search crates"),
-        Line::from("  /<query>          - Quick search"),
-        Line::from("  :help, ?          - Toggle this help"),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Examples:",
+            "🎹 Navigation:",
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from("  :top 5            - Top 5 most downloaded"),
-        Line::from("  :search bevy      - Search for 'bevy'"),
-        Line::from("  /terminal         - Quick search 'terminal'"),
-        Line::from("  :recent 10        - Top 10 by weekly downloads"),
+        Line::from(vec![
+            Span::styled("  j / ↓      ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Move down"),
+        ]),
+        Line::from(vec![
+            Span::styled("  k / ↑      ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Move up"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+d     ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Page down"),
+        ]),
+        Line::from(vec![
+            Span::styled("  Ctrl+u     ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Page up"),
+        ]),
+        Line::from(vec![
+            Span::styled("  g          ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Go to top"),
+        ]),
+        Line::from(vec![
+            Span::styled("  G          ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Go to bottom"),
+        ]),
         Line::from(""),
         Line::from(Span::styled(
-            "Tips:",
+            "📑 Views:",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled("  TAB        ", Style::default().fg(Color::Yellow)),
+            Span::raw("- Toggle Stats view"),
+        ]),
+        Line::from(vec![
+            Span::styled("  ?          ", Style::default().fg(Color::Yellow)),
+            Span::raw("- Toggle this help"),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "⚡ Commands (press ':'):",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled("  :q, :quit         ", Style::default().fg(Color::Magenta)),
+            Span::raw("- Quit"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :all              ", Style::default().fg(Color::Magenta)),
+            Span::raw("- Show all crates"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :core             ", Style::default().fg(Color::Magenta)),
+            Span::raw("- Show core libraries only"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :top [N]          ", Style::default().fg(Color::Magenta)),
+            Span::raw("- Top N by downloads (default: 10)"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :recent [N]       ", Style::default().fg(Color::Magenta)),
+            Span::raw("- Top N by weekly downloads"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :new [N]          ", Style::default().fg(Color::Magenta)),
+            Span::raw("- N newest crates"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :search <query>   ", Style::default().fg(Color::Magenta)),
+            Span::raw("- Search crates"),
+        ]),
+        Line::from(vec![
+            Span::styled("  /<query>          ", Style::default().fg(Color::Magenta)),
+            Span::raw("- Quick search"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :try              ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw("- Try selected crate in temp directory"),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "🧪 Try Mode:",
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from("  • Press '?' to toggle help"),
-        Line::from("  • Press 'q' to quit quickly"),
-        Line::from("  • Use ':' for commands, Esc to cancel"),
-        Line::from("  • Vim-like navigation (hjkl)"),
+        Line::from("  Creates a temporary Cargo project with the selected crate."),
+        Line::from("  Perfect for quick experiments! Auto-cleaned after exit."),
+        Line::from(""),
+        Line::from(Span::styled(
+            "💡 Examples:",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled("  :top 5         ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Top 5 most downloaded"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :search bevy   ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Search for 'bevy'"),
+        ]),
+        Line::from(vec![
+            Span::styled("  /terminal      ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Quick search 'terminal'"),
+        ]),
+        Line::from(vec![
+            Span::styled("  :try           ", Style::default().fg(Color::Cyan)),
+            Span::raw("- Try selected crate"),
+        ]),
     ];
     
     let paragraph = Paragraph::new(help_text)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Help (Press '?' to close) ")
-                .style(Style::default().fg(Color::White)),
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(vec![
+                    Span::styled(" ❓ ", Style::default().fg(Color::Yellow)),
+                    Span::styled("Help", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(" (Press ? or TAB to close) ", Style::default().fg(Color::DarkGray)),
+                ])
+                .style(Style::default()),
         )
-        .wrap(Wrap { trim: true });
+        .wrap(Wrap { trim: false });
+    
+    f.render_widget(paragraph, area);
+}
+
+fn render_stats(f: &mut Frame, app: &App, area: Rect) {
+    // Calculate statistics
+    let total = app.all_crates.len();
+    let core = app.metadata.core_libraries;
+    let community = app.metadata.community_packages;
+    
+    let total_downloads: u64 = app.all_crates.iter().map(|c| c.downloads).sum();
+    let avg_downloads = if total > 0 { total_downloads / total as u64 } else { 0 };
+    
+    let total_weekly: u64 = app.all_crates.iter().map(|c| c.recent_downloads).sum();
+    
+    // Top 5 by downloads
+    let mut sorted_by_downloads = app.all_crates.clone();
+    sorted_by_downloads.sort_by(|a, b| b.downloads.cmp(&a.downloads));
+    let top_5 = sorted_by_downloads.iter().take(5);
+    
+    let mut lines = vec![];
+    
+    // Banner
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "╔═══════════════════════════════════════════════════════╗",
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(vec![
+        Span::styled("║   ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled("📊 RATATUI ECOSYSTEM STATISTICS", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled("            ║", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+    ]));
+    lines.push(Line::from(Span::styled(
+        "╚═══════════════════════════════════════════════════════╝",
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(""));
+    
+    // Overview
+    lines.push(Line::from(Span::styled(
+        "📦 Overview:",
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(vec![
+        Span::raw("  Total Packages:     "),
+        Span::styled(
+            format!("{}", total),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  ⭐ Core Libraries:  "),
+        Span::styled(
+            format!("{}", core),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  🌍 Community:       "),
+        Span::styled(
+            format!("{}", community),
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(""));
+    
+    // Download stats
+    lines.push(Line::from(Span::styled(
+        "📈 Download Statistics:",
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(vec![
+        Span::raw("  Total Downloads:    "),
+        Span::styled(
+            format_number(total_downloads),
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  Average/Crate:      "),
+        Span::styled(
+            format_number(avg_downloads),
+            Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  Weekly Downloads:   "),
+        Span::styled(
+            format_number(total_weekly),
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(""));
+    
+    // Simple bar chart
+    lines.push(Line::from(Span::styled(
+        "📊 Distribution:",
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+    )));
+    
+    let core_pct = (core as f64 / total as f64 * 100.0) as usize;
+    let community_pct = 100 - core_pct;
+    
+    let core_bar = "█".repeat(core_pct / 2);
+    let community_bar = "█".repeat(community_pct / 2);
+    
+    lines.push(Line::from(vec![
+        Span::raw("  Core:      ["),
+        Span::styled(core_bar, Style::default().fg(Color::Yellow)),
+        Span::raw(format!("] {}%", core_pct)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  Community: ["),
+        Span::styled(community_bar, Style::default().fg(Color::Green)),
+        Span::raw(format!("] {}%", community_pct)),
+    ]));
+    lines.push(Line::from(""));
+    
+    // Top 5
+    lines.push(Line::from(Span::styled(
+        "🏆 Top 5 Most Downloaded:",
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+    )));
+    
+    for (i, crate_pkg) in top_5.enumerate() {
+        let medal = match i {
+            0 => "🥇",
+            1 => "🥈",
+            2 => "🥉",
+            _ => "  ",
+        };
+        
+        lines.push(Line::from(vec![
+            Span::raw(format!("  {} ", medal)),
+            Span::styled(
+                format!("{:20}", crate_pkg.name),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!("{:>10}", format_number(crate_pkg.downloads)),
+                Style::default().fg(Color::Green),
+            ),
+        ]));
+    }
+    
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "💡 Tip: Press TAB to go back to list view",
+        Style::default().fg(Color::DarkGray),
+    )));
+    
+    let paragraph = Paragraph::new(Text::from(lines))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(vec![
+                    Span::styled(" 📊 ", Style::default().fg(Color::Yellow)),
+                    Span::styled("Statistics", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                ])
+                .style(Style::default()),
+        )
+        .wrap(Wrap { trim: false });
     
     f.render_widget(paragraph, area);
 }
@@ -574,7 +942,7 @@ fn render_command_bar(f: &mut Frame, app: &App, area: Rect) {
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(" "),
-                Span::raw(&app.status_message),
+                Span::styled(&app.status_message, Style::default().fg(Color::White)),
             ]))
         }
         Mode::Command => {
@@ -586,18 +954,33 @@ fn render_command_bar(f: &mut Frame, app: &App, area: Rect) {
                         .fg(Color::Black)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(" :"),
+                Span::styled(" :", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     &app.command_input,
                     Style::default().fg(Color::Yellow),
                 ),
-                Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
+                Span::styled("_", Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK)),
+            ]))
+        }
+        Mode::Try => {
+            Text::from(Line::from(vec![
+                Span::styled(
+                    " TRY ",
+                    Style::default()
+                        .bg(Color::Magenta)
+                        .fg(Color::Black)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled(&app.status_message, Style::default().fg(Color::Magenta)),
             ]))
         }
     };
     
     let paragraph = Paragraph::new(text)
-        .block(Block::default().borders(Borders::ALL));
+        .block(Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan)));
     
     f.render_widget(paragraph, area);
 }
@@ -628,6 +1011,18 @@ fn handle_events(app: &mut App) -> Result<bool> {
                         app.list_state.select(Some(app.filtered_crates.len().saturating_sub(1)))
                     }
                     
+                    // Views
+                    KeyCode::Tab => {
+                        app.view = match app.view {
+                            View::List => View::Stats,
+                            View::Stats => View::List,
+                            View::Help => View::List,
+                        };
+                    }
+                    KeyCode::Char('?') => {
+                        app.view = if app.view == View::Help { View::List } else { View::Help };
+                    }
+                    
                     // Commands
                     KeyCode::Char(':') | KeyCode::Char('/') => {
                         app.mode = Mode::Command;
@@ -635,11 +1030,6 @@ fn handle_events(app: &mut App) -> Result<bool> {
                         if key.code == KeyCode::Char('/') {
                             app.command_input.push_str("search ");
                         }
-                    }
-                    
-                    // Help
-                    KeyCode::Char('?') => {
-                        app.show_help = !app.show_help;
                     }
                     
                     _ => {}
@@ -663,10 +1053,80 @@ fn handle_events(app: &mut App) -> Result<bool> {
                     }
                     _ => {}
                 },
+                Mode::Try => match key.code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') => {
+                        if let Some(crate_name) = &app.try_crate.clone() {
+                            match setup_try_environment(crate_name) {
+                                Ok(temp_dir) => {
+                                    app.try_temp_dir = Some(temp_dir.clone());
+                                    app.status_message = format!(
+                                        "✓ Created project at: {} - Run 'cargo run' to test!",
+                                        temp_dir
+                                    );
+                                }
+                                Err(e) => {
+                                    app.status_message = format!("Error: {}", e);
+                                }
+                            }
+                        }
+                        app.mode = Mode::Normal;
+                        app.try_crate = None;
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                        app.mode = Mode::Normal;
+                        app.try_crate = None;
+                        app.status_message = "Try cancelled".to_string();
+                    }
+                    _ => {}
+                },
             }
         }
     }
     Ok(false)
+}
+
+// Try mode implementation
+fn setup_try_environment(crate_name: &str) -> Result<String> {
+    use std::process::Command;
+    use tempfile::TempDir;
+    
+    // Create temp directory
+    let temp_dir = TempDir::new()?;
+    let temp_path = temp_dir.path().to_path_buf();
+    
+    // Keep the directory (don't auto-delete)
+    let temp_path_str = temp_path.to_string_lossy().to_string();
+    std::mem::forget(temp_dir);
+    
+    // Create new Cargo project
+    Command::new("cargo")
+        .args(&["new", "try-project"])
+        .current_dir(&temp_path)
+        .output()?;
+    
+    let project_dir = temp_path.join("try-project");
+    
+    // Add the crate
+    Command::new("cargo")
+        .args(&["add", crate_name])
+        .current_dir(&project_dir)
+        .output()?;
+    
+    // Create a simple main.rs that uses the crate
+    let main_rs = project_dir.join("src").join("main.rs");
+    std::fs::write(
+        main_rs,
+        format!(
+            "// Try environment for {}\n\n\
+            fn main() {{\n    \
+                println!(\"Testing {} - Edit this file and run 'cargo run'\");\n    \
+                // Add your test code here\n\
+            }}\n",
+            crate_name, crate_name
+        ),
+    )?;
+    
+    Ok(project_dir.to_string_lossy().to_string())
 }
 
 // ============================================================================
