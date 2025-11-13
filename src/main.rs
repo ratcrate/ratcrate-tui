@@ -17,7 +17,6 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::io;
-use std::process::Command;
 
 mod cache;
 mod types;
@@ -434,7 +433,7 @@ fn ui(f: &mut Frame, app: &mut App) {
             Constraint::Min(0),      // Main content
             Constraint::Length(3),   // Command/status bar
         ])
-        .split(f.size());
+        .split(f.area());
     
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -463,7 +462,7 @@ fn render_list(f: &mut Frame, app: &mut App, area: Rect) {
         .filtered_crates
         .iter()
         .enumerate()
-        .map(|(idx, crate_pkg)| {
+        .map(|(_idx, crate_pkg)| {
             let icon = if crate_pkg.is_core_library { "⭐" } else { "📦" };
             
             // Create a colorful list item

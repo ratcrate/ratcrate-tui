@@ -6,6 +6,15 @@ use colored::*;
 
 use crate::types::CratesData;
 
+/// Get the cache directory path
+/// Returns the operating-system appropriate directory used for caching ratcrate data.
+///
+/// This function attempts to select a sensible per-user cache/data directory.
+/// On success it returns a PathBuf which points to the directory where cached JSON data
+/// can be stored. The caller is responsible for creating files/directories as needed.
+///
+/// # Errors
+/// Returns an `anyhow::Error` if the platform-specific directory cannot be determined.
 const REMOTE_URL: &str = "https://ratcrate.github.io/data/ratcrate.json";
 const CACHE_MAX_AGE_DAYS: u64 = 7;
 
@@ -85,7 +94,17 @@ pub fn download_fresh_data() -> Result<CratesData> {
     Ok(data)
 }
 
-/// Get data - use cache if fresh, otherwise download
+/// Get the Crates data for the TUI.
+///
+/// This function returns `CratesData` either by loading from a local cache (if present and fresh)
+/// or by downloading fresh data from the configured remote URL. Pass `force_refresh = true` to
+/// always fetch fresh data.
+///
+/// # Arguments
+/// * `force_refresh` - bool: if true, ignore cache and download fresh data.
+///
+/// # Errors
+/// Returns an error if network download or cache IO operations fail.
 pub fn get_data(force_refresh: bool) -> Result<CratesData> {
     if force_refresh {
         println!("{}", "🔄 Force refresh requested".yellow());
@@ -95,5 +114,21 @@ pub fn get_data(force_refresh: bool) -> Result<CratesData> {
         download_fresh_data()
     } else {
         load_from_cache()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests for cache.rs
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_cache_dir_returns_path() {
+        let p = get_cache_dir().expect("get_cache_dir should succeed on supported platforms");
+        // Path should be non-empty and absolute
+        assert!(p.as_os_str().len() > 0);
+        assert!(p.is_absolute() || p.starts_with("/"));
     }
 }

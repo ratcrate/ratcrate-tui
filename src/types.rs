@@ -1,6 +1,13 @@
+//! types.rs — Data types used by the ratcrate TUI
+//!
+//! This module defines serializable types that mirror the JSON structure used by the
+//! ratcrate data feed. Types derive `Serialize`/`Deserialize` so they can be round-tripped
+//! with `serde_json`.
+//
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Describes a dependency entry for a crate (version and flags).
 pub struct RatatuiDependency {
     pub version: String,
     pub optional: bool,
@@ -8,6 +15,7 @@ pub struct RatatuiDependency {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Primary crate metadata used to render list and detail views
 pub struct CratePackage {
     pub id: String,
     pub name: String,
@@ -33,6 +41,7 @@ pub struct Statistics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Metadata about the dataset (generation time , totals, etc.)
 pub struct Metadata {
     pub version: String,
     pub generated_at: String,
