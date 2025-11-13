@@ -17,6 +17,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::io;
+use std::process::Command;
 
 mod cache;
 mod types;
@@ -32,7 +33,7 @@ use types::{CratePackage, CratesData};
 enum Mode {
     Normal,      // Navigation mode
     Command,     // Command mode (after pressing ':')
-    Try,         // Try mode - confirming installation
+    // Try,         // Try mode - confirming installation
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,8 +57,8 @@ struct App {
     status_message: String,
     
     // Try mode
-    try_crate: Option<String>,
-    try_temp_dir: Option<String>,
+    // try_crate: Option<String>,
+    // try_temp_dir: Option<String>,
     
     // Search state
     last_search: String,
@@ -86,8 +87,8 @@ impl App {
                 metadata.core_libraries,
                 metadata.community_packages
             ),
-            try_crate: None,
-            try_temp_dir: None,
+            // try_crate: None,
+            // try_temp_dir: None,
             last_search: String::new(),
         }
     }
@@ -155,114 +156,203 @@ impl App {
         self.list_state.select(Some(i));
     }
     
+//     fn execute_command(&mut self) {
+//         let cmd = self.command_input.trim();
+//         
+//         if cmd.is_empty() {
+//             self.mode = Mode::Normal;
+//             return;
+//         }
+//         
+//         // Parse command
+//         let parts: Vec<&str> = cmd.split_whitespace().collect();
+//         let command = parts[0];
+//         
+//         match command {
+//             "q" | "quit" => {
+//                 // Will be handled in main loop
+//             }
+//             "core" => {
+//                 self.filtered_crates = self.all_crates
+//                     .iter()
+//                     .filter(|c| c.is_core_library)
+//                     .cloned()
+//                     .collect();
+//                 self.list_state.select(Some(0));
+//                 self.status_message = format!("Showing {} core libraries", self.filtered_crates.len());
+//             }
+//             "all" => {
+//                 self.filtered_crates = self.all_crates.clone();
+//                 self.list_state.select(Some(0));
+//                 self.status_message = format!("Showing all {} crates", self.filtered_crates.len());
+//             }
+//             "top" => {
+//                 let limit: usize = parts.get(1)
+//                     .and_then(|s| s.parse().ok())
+//                     .unwrap_or(10);
+//                 
+//                 let mut sorted = self.all_crates.clone();
+//                 sorted.sort_by(|a, b| b.downloads.cmp(&a.downloads));
+//                 self.filtered_crates = sorted.into_iter().take(limit).collect();
+//                 self.list_state.select(Some(0));
+//                 self.status_message = format!("Showing top {} by downloads", limit);
+//             }
+//             "recent" => {
+//                 let limit: usize = parts.get(1)
+//                     .and_then(|s| s.parse().ok())
+//                     .unwrap_or(10);
+//                 
+//                 let mut sorted = self.all_crates.clone();
+//                 sorted.sort_by(|a, b| b.recent_downloads.cmp(&a.recent_downloads));
+//                 self.filtered_crates = sorted.into_iter().take(limit).collect();
+//                 self.list_state.select(Some(0));
+//                 self.status_message = format!("Showing top {} by weekly downloads", limit);
+//             }
+//             "new" => {
+//                 let limit: usize = parts.get(1)
+//                     .and_then(|s| s.parse().ok())
+//                     .unwrap_or(10);
+//                 
+//                 let mut sorted = self.all_crates.clone();
+//                 sorted.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+//                 self.filtered_crates = sorted.into_iter().take(limit).collect();
+//                 self.list_state.select(Some(0));
+//                 self.status_message = format!("Showing {} newest crates", limit);
+//             }
+//             "search" | "/" => {
+//                 if parts.len() > 1 {
+//                     let query = parts[1..].join(" ").to_lowercase();
+//                     self.last_search = query.clone();
+//                     self.filtered_crates = self.all_crates
+//                         .iter()
+//                         .filter(|c| {
+//                             c.name.to_lowercase().contains(&query)
+//                                 || c.description.to_lowercase().contains(&query)
+//                         })
+//                         .cloned()
+//                         .collect();
+//                     self.list_state.select(Some(0));
+//                     self.status_message = format!(
+//                         "Found {} crates matching '{}'",
+//                         self.filtered_crates.len(),
+//                         self.last_search
+//                     );
+//                 } else {
+//                     self.status_message = "Usage: :search <query> or /<query>".to_string();
+//                 }
+//             }
+//             "help" | "?" => {
+//                 self.view = if self.view == View::Help { View::List } else { View::Help };
+//                 self.status_message = if self.view == View::Help {
+//                     "Showing help - Press ? or TAB to go back".to_string()
+//                 } else {
+//                     "Help hidden".to_string()
+//                 };
+//             }
+//             "try" => {
+//                 if let Some(crate_pkg) = self.selected_crate().cloned() {
+//                     self.try_crate = Some(crate_pkg.name.clone());
+//                     self.mode = Mode::Try;
+//                     self.status_message = format!(
+//                         "Try '{}' in /tmp/ratcrate-try? Press 'y' to confirm, 'n' to cancel",
+//                         crate_pkg.name
+//                     );
+//                 } else {
+//                     self.status_message = "No crate selected".to_string();
+//                 }
+//             }
+//             _ => {
+//                 // Try as search query
+//                 let query = cmd.to_lowercase();
+//                 self.last_search = query.clone();
+//                 self.filtered_crates = self.all_crates
+//                     .iter()
+//                     .filter(|c| {
+//                         c.name.to_lowercase().contains(&query)
+//                             || c.description.to_lowercase().contains(&query)
+//                     })
+//                     .cloned()
+//                     .collect();
+//                 self.list_state.select(Some(0));
+//                 self.status_message = format!(
+//                     "Found {} crates matching '{}'",
+//                     self.filtered_crates.len(),
+//                     query
+//                 );
+//             }
+//         }
+//         
+//         self.command_input.clear();
+//         self.mode = Mode::Normal;
+//     }
+//
+
     fn execute_command(&mut self) {
-        let cmd = self.command_input.trim();
-        
-        if cmd.is_empty() {
-            self.mode = Mode::Normal;
-            return;
+    let cmd = self.command_input.trim();
+    
+    if cmd.is_empty() {
+        self.mode = Mode::Normal;
+        return;
+    }
+    
+    // Parse command
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    let command = parts[0];
+    
+    match command {
+        "q" | "quit" => {
+            // Will be handled in main loop
         }
-        
-        // Parse command
-        let parts: Vec<&str> = cmd.split_whitespace().collect();
-        let command = parts[0];
-        
-        match command {
-            "q" | "quit" => {
-                // Will be handled in main loop
-            }
-            "core" => {
-                self.filtered_crates = self.all_crates
-                    .iter()
-                    .filter(|c| c.is_core_library)
-                    .cloned()
-                    .collect();
-                self.list_state.select(Some(0));
-                self.status_message = format!("Showing {} core libraries", self.filtered_crates.len());
-            }
-            "all" => {
-                self.filtered_crates = self.all_crates.clone();
-                self.list_state.select(Some(0));
-                self.status_message = format!("Showing all {} crates", self.filtered_crates.len());
-            }
-            "top" => {
-                let limit: usize = parts.get(1)
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(10);
-                
-                let mut sorted = self.all_crates.clone();
-                sorted.sort_by(|a, b| b.downloads.cmp(&a.downloads));
-                self.filtered_crates = sorted.into_iter().take(limit).collect();
-                self.list_state.select(Some(0));
-                self.status_message = format!("Showing top {} by downloads", limit);
-            }
-            "recent" => {
-                let limit: usize = parts.get(1)
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(10);
-                
-                let mut sorted = self.all_crates.clone();
-                sorted.sort_by(|a, b| b.recent_downloads.cmp(&a.recent_downloads));
-                self.filtered_crates = sorted.into_iter().take(limit).collect();
-                self.list_state.select(Some(0));
-                self.status_message = format!("Showing top {} by weekly downloads", limit);
-            }
-            "new" => {
-                let limit: usize = parts.get(1)
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(10);
-                
-                let mut sorted = self.all_crates.clone();
-                sorted.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-                self.filtered_crates = sorted.into_iter().take(limit).collect();
-                self.list_state.select(Some(0));
-                self.status_message = format!("Showing {} newest crates", limit);
-            }
-            "search" | "/" => {
-                if parts.len() > 1 {
-                    let query = parts[1..].join(" ").to_lowercase();
-                    self.last_search = query.clone();
-                    self.filtered_crates = self.all_crates
-                        .iter()
-                        .filter(|c| {
-                            c.name.to_lowercase().contains(&query)
-                                || c.description.to_lowercase().contains(&query)
-                        })
-                        .cloned()
-                        .collect();
-                    self.list_state.select(Some(0));
-                    self.status_message = format!(
-                        "Found {} crates matching '{}'",
-                        self.filtered_crates.len(),
-                        self.last_search
-                    );
-                } else {
-                    self.status_message = "Usage: :search <query> or /<query>".to_string();
-                }
-            }
-            "help" | "?" => {
-                self.view = if self.view == View::Help { View::List } else { View::Help };
-                self.status_message = if self.view == View::Help {
-                    "Showing help - Press ? or TAB to go back".to_string()
-                } else {
-                    "Help hidden".to_string()
-                };
-            }
-            "try" => {
-                if let Some(crate_pkg) = self.selected_crate().map(|c| c.clone()) {
-                    self.try_crate = Some(crate_pkg.name.clone());
-                    self.mode = Mode::Try;
-                    self.status_message = format!(
-                        "Try {} in temporary directory? Press 'y' to confirm, 'n' to cancel",
-                        crate_pkg.name
-                    );
-                } else {
-                    self.status_message = "No crate selected".to_string();
-                }
-            }
-            _ => {
-                // Try as search query
-                let query = cmd.to_lowercase();
+        "core" => {
+            self.filtered_crates = self.all_crates
+                .iter()
+                .filter(|c| c.is_core_library)
+                .cloned()
+                .collect();
+            self.list_state.select(Some(0));
+            self.status_message = format!("Showing {} core libraries", self.filtered_crates.len());
+        }
+        "all" => {
+            self.filtered_crates = self.all_crates.clone();
+            self.list_state.select(Some(0));
+            self.status_message = format!("Showing all {} crates", self.filtered_crates.len());
+        }
+        "top" => {
+            let limit: usize = parts.get(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10);
+            
+            let mut sorted = self.all_crates.clone();
+            sorted.sort_by(|a, b| b.downloads.cmp(&a.downloads));
+            self.filtered_crates = sorted.into_iter().take(limit).collect();
+            self.list_state.select(Some(0));
+            self.status_message = format!("Showing top {} by downloads", limit);
+        }
+        "recent" => {
+            let limit: usize = parts.get(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10);
+            
+            let mut sorted = self.all_crates.clone();
+            sorted.sort_by(|a, b| b.recent_downloads.cmp(&a.recent_downloads));
+            self.filtered_crates = sorted.into_iter().take(limit).collect();
+            self.list_state.select(Some(0));
+            self.status_message = format!("Showing top {} by weekly downloads", limit);
+        }
+        "new" => {
+            let limit: usize = parts.get(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10);
+            
+            let mut sorted = self.all_crates.clone();
+            sorted.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            self.filtered_crates = sorted.into_iter().take(limit).collect();
+            self.list_state.select(Some(0));
+            self.status_message = format!("Showing {} newest crates", limit);
+        }
+        "search" | "/" => {
+            if parts.len() > 1 {
+                let query = parts[1..].join(" ").to_lowercase();
                 self.last_search = query.clone();
                 self.filtered_crates = self.all_crates
                     .iter()
@@ -276,15 +366,62 @@ impl App {
                 self.status_message = format!(
                     "Found {} crates matching '{}'",
                     self.filtered_crates.len(),
-                    query
+                    self.last_search
                 );
+            } else {
+                self.status_message = "Usage: :search <query> or /<query>".to_string();
             }
         }
-        
-        self.command_input.clear();
-        self.mode = Mode::Normal;
+        "help" | "?" => {
+            self.view = if self.view == View::Help { View::List } else { View::Help };
+            self.status_message = if self.view == View::Help {
+                "Showing help - Press ? or TAB to go back".to_string()
+            } else {
+                "Help hidden".to_string()
+            };
+        }
+        // "try" => {
+        //     if let Some(crate_pkg) = self.selected_crate().cloned() {
+        //         self.try_crate = Some(crate_pkg.name.clone());
+        //         self.mode = Mode::Try;
+        //         self.status_message = format!(
+        //             "Try '{}' in /tmp/ratcrate-try? Press 'y' to confirm, 'n' to cancel",
+        //             crate_pkg.name
+        //         );
+        //     } else {
+        //         self.status_message = "No crate selected".to_string();
+        //     }
+        // }
+        _ => {
+            // Try as search query
+            let query = cmd.to_lowercase();
+            self.last_search = query.clone();
+            self.filtered_crates = self.all_crates
+                .iter()
+                .filter(|c| {
+                    c.name.to_lowercase().contains(&query)
+                        || c.description.to_lowercase().contains(&query)
+                })
+                .cloned()
+                .collect();
+            self.list_state.select(Some(0));
+            self.status_message = format!(
+                "Found {} crates matching '{}'",
+                self.filtered_crates.len(),
+                query
+            );
+        }
     }
+    
+    // Clear typed command, but DO NOT forcibly exit Try mode if we just entered it.
+    self.command_input.clear();
+    // if self.mode != Mode::Try {
+        self.mode = Mode::Normal;
+    // }
 }
+}
+
+
 
 // ============================================================================
 // UI Rendering
@@ -433,18 +570,27 @@ fn render_detail(f: &mut Frame, app: &App, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         )));
         
-        // Wrap long descriptions
-        let desc_lines: Vec<String> = crate_pkg.description
-            .as_str()
-            .chars()
-            .collect::<Vec<_>>()
-            .chunks(60)
-            .map(|c| c.iter().collect::<String>())
-            .collect::<Vec<_>>();
+        // Simple word wrapping for description
+        let words: Vec<&str> = crate_pkg.description.split_whitespace().collect();
+        let mut current_line = String::new();
         
-        for line in desc_lines.iter().take(3) {
+        for word in words {
+            if current_line.len() + word.len() + 1 > 60 {
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", current_line),
+                    Style::default().fg(Color::White),
+                )));
+                current_line = word.to_string();
+            } else {
+                if !current_line.is_empty() {
+                    current_line.push(' ');
+                }
+                current_line.push_str(word);
+            }
+        }
+        if !current_line.is_empty() {
             lines.push(Line::from(Span::styled(
-                format!("  {}", line),
+                format!("  {}", current_line),
                 Style::default().fg(Color::White),
             )));
         }
@@ -710,26 +856,26 @@ fn render_help(f: &mut Frame, area: Rect) {
             Span::styled("  /<query>          ", Style::default().fg(Color::Magenta)),
             Span::raw("- Quick search"),
         ]),
-        Line::from(vec![
-            Span::styled("  :try              ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::raw("- Try selected crate in temp directory"),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "🧪 Try Mode:",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  Creates a temporary Cargo project with the selected crate."),
-        Line::from("  Perfect for quick experiments! Auto-cleaned after exit."),
-        Line::from(""),
-        Line::from(Span::styled(
-            "💡 Examples:",
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )),
+        // Line::from(vec![
+        //     Span::styled("  :try              ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        //     Span::raw("- Try selected crate in temp directory"),
+        // ]),
+        // Line::from(""),
+        // Line::from(Span::styled(
+        //     "🧪 Try Mode:",
+        //     Style::default()
+        //         .fg(Color::Yellow)
+        //         .add_modifier(Modifier::BOLD),
+        // )),
+        // Line::from("  Creates a temporary Cargo project with the selected crate."),
+        // Line::from("  Perfect for quick experiments! Auto-cleaned after exit."),
+        // Line::from(""),
+        // Line::from(Span::styled(
+        //     "💡 Examples:",
+        //     Style::default()
+        //         .fg(Color::Green)
+        //         .add_modifier(Modifier::BOLD),
+        // )),
         Line::from(vec![
             Span::styled("  :top 5         ", Style::default().fg(Color::Cyan)),
             Span::raw("- Top 5 most downloaded"),
@@ -742,10 +888,10 @@ fn render_help(f: &mut Frame, area: Rect) {
             Span::styled("  /terminal      ", Style::default().fg(Color::Cyan)),
             Span::raw("- Quick search 'terminal'"),
         ]),
-        Line::from(vec![
-            Span::styled("  :try           ", Style::default().fg(Color::Cyan)),
-            Span::raw("- Try selected crate"),
-        ]),
+        // Line::from(vec![
+        //     Span::styled("  :try           ", Style::default().fg(Color::Cyan)),
+        //     Span::raw("- Try selected crate"),
+        // ]),
     ];
     
     let paragraph = Paragraph::new(help_text)
@@ -962,19 +1108,19 @@ fn render_command_bar(f: &mut Frame, app: &App, area: Rect) {
                 Span::styled("_", Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK)),
             ]))
         }
-        Mode::Try => {
-            Text::from(Line::from(vec![
-                Span::styled(
-                    " TRY ",
-                    Style::default()
-                        .bg(Color::Magenta)
-                        .fg(Color::Black)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" "),
-                Span::styled(&app.status_message, Style::default().fg(Color::Magenta)),
-            ]))
-        }
+        // Mode::Try => {
+        //     Text::from(Line::from(vec![
+        //         Span::styled(
+        //             " TRY ",
+        //             Style::default()
+        //                 .bg(Color::Magenta)
+        //                 .fg(Color::Black)
+        //                 .add_modifier(Modifier::BOLD),
+        //         ),
+        //         Span::raw(" "),
+        //         Span::styled(&app.status_message, Style::default().fg(Color::Magenta)),
+        //     ]))
+        // }
     };
     
     let paragraph = Paragraph::new(text)
@@ -1053,81 +1199,51 @@ fn handle_events(app: &mut App) -> Result<bool> {
                     }
                     _ => {}
                 },
-                Mode::Try => match key.code {
-                    KeyCode::Char('y') | KeyCode::Char('Y') => {
-                        if let Some(crate_name) = &app.try_crate.clone() {
-                            match setup_try_environment(crate_name) {
-                                Ok(temp_dir) => {
-                                    app.try_temp_dir = Some(temp_dir.clone());
-                                    app.status_message = format!(
-                                        "✓ Created project at: {} - Run 'cargo run' to test!",
-                                        temp_dir
-                                    );
-                                }
-                                Err(e) => {
-                                    app.status_message = format!("Error: {}", e);
-                                }
-                            }
-                        }
-                        app.mode = Mode::Normal;
-                        app.try_crate = None;
-                    }
-                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                        app.mode = Mode::Normal;
-                        app.try_crate = None;
-                        app.status_message = "Try cancelled".to_string();
-                    }
-                    _ => {}
-                },
+                // Mode::Try => match key.code {
+                //     KeyCode::Char('y') | KeyCode::Char('Y') => {
+                //         if let Some(crate_name) = app.try_crate.clone() {
+                //             // Update status to show we're working
+                //             app.status_message = format!("🔄 Setting up try environment for {}... (this may take a moment)", crate_name);
+                //             app.mode = Mode::Normal; // Exit try mode immediately
+                //             
+                //             // Force redraw to show the status
+                //             // terminal.draw(|f| ui(f, app))?;
+                //             
+                //             // Now do the work
+                //             match setup_try_environment(&crate_name) {
+                //                 Ok(temp_dir) => {
+                //                     app.try_temp_dir = Some(temp_dir.clone());
+                //                     app.status_message = format!(
+                //                         "✅ Ready! Run:  cd {}  &&  cargo run  |  Cleanup:  rm -rf /tmp/ratcrate-try/{}",
+                //                         temp_dir, crate_name
+                //                     );
+                //                 }
+                //                 Err(e) => {
+                //                     app.status_message = format!("❌ Error: {}", e);
+                //                 }
+                //             }
+                //             
+                //             // Redraw with final status
+                //             // terminal.draw(|f| ui(f, app))?;
+                //         } else {
+                //             app.status_message = "No crate selected for try mode".to_string();
+                //             app.mode = Mode::Normal;
+                //         }
+                //         app.try_crate = None;
+                //     }
+                //     KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                //         app.mode = Mode::Normal;
+                //         app.try_crate = None;
+                //         app.status_message = "Try cancelled".to_string();
+                //     }
+                //     _ => {}
+                // },
             }
         }
     }
     Ok(false)
 }
 
-// Try mode implementation
-fn setup_try_environment(crate_name: &str) -> Result<String> {
-    use std::process::Command;
-    use tempfile::TempDir;
-    
-    // Create temp directory
-    let temp_dir = TempDir::new()?;
-    let temp_path = temp_dir.path().to_path_buf();
-    
-    // Keep the directory (don't auto-delete)
-    let temp_path_str = temp_path.to_string_lossy().to_string();
-    std::mem::forget(temp_dir);
-    
-    // Create new Cargo project
-    Command::new("cargo")
-        .args(&["new", "try-project"])
-        .current_dir(&temp_path)
-        .output()?;
-    
-    let project_dir = temp_path.join("try-project");
-    
-    // Add the crate
-    Command::new("cargo")
-        .args(&["add", crate_name])
-        .current_dir(&project_dir)
-        .output()?;
-    
-    // Create a simple main.rs that uses the crate
-    let main_rs = project_dir.join("src").join("main.rs");
-    std::fs::write(
-        main_rs,
-        format!(
-            "// Try environment for {}\n\n\
-            fn main() {{\n    \
-                println!(\"Testing {} - Edit this file and run 'cargo run'\");\n    \
-                // Add your test code here\n\
-            }}\n",
-            crate_name, crate_name
-        ),
-    )?;
-    
-    Ok(project_dir.to_string_lossy().to_string())
-}
 
 // ============================================================================
 // Main
@@ -1183,3 +1299,8 @@ fn format_number(n: u64) -> String {
         n.to_string()
     }
 }
+
+// ============================================================================
+// Note: cache.rs and types.rs are EXACTLY the same as ratcrate-cli
+// Just copy them from the CLI project!
+// ============================================================================
