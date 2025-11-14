@@ -16,7 +16,7 @@ use crate::types::CratesData;
 /// # Errors
 /// Returns an `anyhow::Error` if the platform-specific directory cannot be determined.
 const REMOTE_URL: &str = "https://ratcrate.github.io/data/ratcrate.json";
-const CACHE_MAX_AGE_DAYS: u64 = 7;
+const CACHE_MAX_AGE_DAYS: u64 = 1;
 
 /// Get the cache directory path
 pub fn get_cache_dir() -> Result<PathBuf> {
