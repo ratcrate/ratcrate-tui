@@ -1,0 +1,15 @@
+# Rust files
+rust:
+  - '**/*.rs'
+  - '**/Cargo.toml'
+  - '**/Cargo.lock'
+
+# Documentation
+documentation:
+  - '**/*.md'
+  - 'docs/**/*'
+
+# GitHub Actions
+github-actions:
+  - '.github/workflows/*'
+  - '.github/actions/*'
