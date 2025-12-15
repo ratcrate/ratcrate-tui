@@ -1,9 +1,14 @@
-# 📦 ratcrate-tui: Ratatui Ecosystem Explorer via Ratatui
+# 🦀 ratcrate-tui: Ratatui Ecosystem Crate Discoverer
 
-![CI](https://github.com/ratcrate/ratcrate-tui/workflows/CI/badge.svg)
-![Security](https://github.com/ratcrate/ratcrate-tui/workflows/Security/badge.svg)
-[![License](https://img.shields.io/github/license/ratcrate/ratcrate-tui)](LICENSE)
-[![Contributors](https://img.shields.io/github/contributors/ratcrate/ratcrate-tui)](https://github.com/ratcrate/ratcrate-tui/graphs/contributors)
+[![CI](https://github.com/ratcrate/ratcrate-tui/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ratcrate/ratcrate-tui/actions/workflows/ci.yml)
+[![Release](https://github.com/ratcrate/ratcrate-tui/actions/workflows/all-release.yml/badge.svg)](https://github.com/ratcrate/ratcrate-tui/actions/workflows/all-release.yml)
+[![Documentation](https://docs.rs/ratcrate-tui/badge.svg)](https://docs.rs/ratcrate-tui)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) 
+[![Crates.io](https://img.shields.io/crates/v/ratcrate-tui.svg)](https://crates.io/crates/ratcrate-cli)
+[![Downloads](https://img.shields.io/crates/d/ratcrate-tui.svg)](https://crates.io/crates/ratcrate-cli)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+
+
 
 add some info about ratcrate.in and ratcrate-cli here and provide links
 
