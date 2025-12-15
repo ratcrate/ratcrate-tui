@@ -1,5 +1,10 @@
 # 📦 ratcrate-tui: Ratatui Ecosystem Explorer via Ratatui
 
+![CI](https://github.com/ratcrate/ratcrate-tui/workflows/CI/badge.svg)
+![Security](https://github.com/ratcrate/ratcrate-tui/workflows/Security/badge.svg)
+[![License](https://img.shields.io/github/license/ratcrate/ratcrate-tui)](LICENSE)
+[![Contributors](https://img.shields.io/github/contributors/ratcrate/ratcrate-tui)](https://github.com/ratcrate/ratcrate-tui/graphs/contributors)
+
 add some info about ratcrate.in and ratcrate-cli here and provide links
 
 **ratcrate-tui** is a fast, terminal-based user interface (TUI) for exploring crates within the Ratatui ecosystem. Find core libraries, popular community packages, view stats, and get install commands—all without leaving your terminal.
