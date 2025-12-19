@@ -1,12 +1,20 @@
 # 📦 ratcrate-tui: Ratatui Ecosystem Explorer via Ratatui
 
-add some info about ratcrate.in and ratcrate-cli here and provide links
 
 **ratcrate-tui** is a fast, terminal-based user interface (TUI) for exploring crates within the Ratatui ecosystem. Find core libraries, popular community packages, view stats, and get install commands—all without leaving your terminal.
 
 It is built with Rust, leveraging the power of `ratatui` for the interface and `crossterm` for terminal interaction.
 
+This is the 3rd tool in the Ratatui ecosystem. 
+
+Try out
+
+ - Web version [Ratcrate](https://ratcrate.in) 
+ - CLI version  [ratcrate-cli](https://github.com/ratcrate/ratcrate-cli)
+
+
 ![ratcrate-tui](https://github.com/user-attachments/assets/42708536-847d-483c-9305-f6f9a19facf6)
+
 
 
 # ✨ Features
@@ -94,13 +102,11 @@ The TUI operates in two main modes: Normal (Navigation) and Command (Input).
 
 
 
-
 # Future Plans
 - [ ] Icon & beautification
 - [ ] Add Banner via `qbanner` library
 
 
-#### Other project related to ratcrate ecosystem
 
  
 
