@@ -4,7 +4,6 @@ on:
     tags:
       - 'v*'      # Matches v0.1.0, v1.0.0, etc.
       - '[0-9]*'  # Matches 0.1.0, 1.0.0, etc.
-
 jobs:
   build:
     name: Build Release Binaries
