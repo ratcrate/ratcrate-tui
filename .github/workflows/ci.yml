@@ -77,7 +77,7 @@ jobs:
         run: |
           if [ -f "target/release/ratcrate-cli" ]; then
             echo "✅ Binary built successfully"
-            ls -lh target/release/ratcrate-cli
+            ls -lh target/release/ratcrate-tui
           else
             echo "❌ Binary not found"
             exit 1
