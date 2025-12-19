@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
+use colored::*;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
-use colored::*;
 
 use crate::types::CratesData;
 
@@ -29,7 +29,7 @@ pub fn get_cache_dir() -> Result<PathBuf> {
             .context("Failed to get cache directory")?
             .join("ratcrate")
     };
-    
+
     fs::create_dir_all(&cache_dir)?;
     Ok(cache_dir)
 }
@@ -42,27 +42,25 @@ pub fn get_cache_file() -> Result<PathBuf> {
 /// Check if cache is stale
 pub fn is_cache_stale() -> Result<bool> {
     let cache_file = get_cache_file()?;
-    
+
     if !cache_file.exists() {
         return Ok(true);
     }
-    
+
     let metadata = fs::metadata(&cache_file)?;
     let modified = metadata.modified()?;
     let age = SystemTime::now().duration_since(modified)?;
-    
+
     Ok(age > Duration::from_secs(CACHE_MAX_AGE_DAYS * 24 * 3600))
 }
 
 /// Load data from cache
 pub fn load_from_cache() -> Result<CratesData> {
     let cache_file = get_cache_file()?;
-    let content = fs::read_to_string(&cache_file)
-        .context("Failed to read cache file")?;
-    
-    let data: CratesData = serde_json::from_str(&content)
-        .context("Failed to parse cache file")?;
-    
+    let content = fs::read_to_string(&cache_file).context("Failed to read cache file")?;
+
+    let data: CratesData = serde_json::from_str(&content).context("Failed to parse cache file")?;
+
     println!("{}", "✓ Loaded from cache".green());
     Ok(data)
 }
@@ -70,27 +68,29 @@ pub fn load_from_cache() -> Result<CratesData> {
 /// Download fresh data from GitHub
 pub fn download_fresh_data() -> Result<CratesData> {
     println!("{}", "📡 Downloading latest data from GitHub...".cyan());
-    
-    let response = reqwest::blocking::get(REMOTE_URL)
-        .context("Failed to download data")?;
-    
+
+    let response = reqwest::blocking::get(REMOTE_URL).context("Failed to download data")?;
+
     if !response.status().is_success() {
         anyhow::bail!("Server returned status: {}", response.status());
     }
-    
-    let data: CratesData = response.json()
-        .context("Failed to parse downloaded data")?;
-    
+
+    let data: CratesData = response.json().context("Failed to parse downloaded data")?;
+
     // Save to cache
     let cache_file = get_cache_file()?;
     let json = serde_json::to_string_pretty(&data)?;
     fs::write(&cache_file, json)?;
-    
+
     println!(
         "{}",
-        format!("✓ Downloaded and cached {} crates", data.metadata.total_crates).green()
+        format!(
+            "✓ Downloaded and cached {} crates",
+            data.metadata.total_crates
+        )
+        .green()
     );
-    
+
     Ok(data)
 }
 
