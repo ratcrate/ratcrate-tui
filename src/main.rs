@@ -6,15 +6,15 @@ use anyhow::Result;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
-    Frame, Terminal,
 };
 use std::io;
 
@@ -82,9 +82,7 @@ impl App {
             command_input: String::new(),
             status_message: format!(
                 "📦 {} crates | ⭐ {} core | 🌍 {} community | Press TAB for stats, ? for help, : for commands",
-                metadata.total_crates,
-                metadata.core_libraries,
-                metadata.community_packages
+                metadata.total_crates, metadata.core_libraries, metadata.community_packages
             ),
             // try_crate: None,
             // try_temp_dir: None,
