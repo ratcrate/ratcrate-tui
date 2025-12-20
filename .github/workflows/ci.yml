@@ -76,15 +76,11 @@ jobs:
       - name: Check binary exists
         shell: bash
         run: |
-          # Use the actual name defined in your Cargo.toml [[bin]] or [package] section
-          BINARY_NAME="ratcrate-tui" 
-          
-          if [ -f "target/release/$BINARY_NAME" ]; then
+          run: |
+          if [ -f "target/release/ratcrate-tui" ]; then
             echo "✅ Binary built successfully"
-            ls -lh "target/release/$BINARY_NAME"
+            ls -lh target/release/ratcrate-tui
           else
-            echo "❌ Binary not found at target/release/$BINARY_NAME"
-            # List directory to help debug if it still fails
-            ls -R target/release/
+            echo "❌ Binary not found"
             exit 1
           fi
