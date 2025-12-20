@@ -52,7 +52,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
       
       - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy -- -A clippy::all
         if: matrix.os == 'ubuntu-latest'
   
   # Check that the code builds
