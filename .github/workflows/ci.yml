@@ -75,7 +75,7 @@ jobs:
       
       - name: Check binary exists
         run: |
-          if [ -f "target/release/ratcrate-cli" ]; then
+          if [ -f "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" ]; then
             echo "✅ Binary built successfully"
             ls -lh target/release/ratcrate-tui
           else
