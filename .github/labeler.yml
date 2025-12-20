@@ -1,15 +1,21 @@
 # Rust files
 rust:
-  - '**/*.rs'
-  - '**/Cargo.toml'
-  - '**/Cargo.lock'
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.rs'
+          - '**/Cargo.toml'
+          - '**/Cargo.lock'
 
 # Documentation
 documentation:
-  - '**/*.md'
-  - 'docs/**/*'
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**/*'
 
 # GitHub Actions
 github-actions:
-  - '.github/workflows/*'
-  - '.github/actions/*'
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/*'
+          - '.github/actions/*'
