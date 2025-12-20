@@ -74,11 +74,17 @@ jobs:
         run: cargo build --release --verbose
       
       - name: Check binary exists
+        shell: bash
         run: |
-          if [ -f "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" ]; then
+          # Use the actual name defined in your Cargo.toml [[bin]] or [package] section
+          BINARY_NAME="ratcrate-tui" 
+          
+          if [ -f "target/release/$BINARY_NAME" ]; then
             echo "✅ Binary built successfully"
-            ls -lh target/release/ratcrate-tui
+            ls -lh "target/release/$BINARY_NAME"
           else
-            echo "❌ Binary not found"
+            echo "❌ Binary not found at target/release/$BINARY_NAME"
+            # List directory to help debug if it still fails
+            ls -R target/release/
             exit 1
           fi
