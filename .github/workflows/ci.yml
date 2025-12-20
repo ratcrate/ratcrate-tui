@@ -76,7 +76,6 @@ jobs:
       - name: Check binary exists
         shell: bash
         run: |
-          run: |
           if [ -f "target/release/ratcrate-tui" ]; then
             echo "✅ Binary built successfully"
             ls -lh target/release/ratcrate-tui
