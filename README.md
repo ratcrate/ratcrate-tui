@@ -8,7 +8,7 @@
 [![Crates.io](https://img.shields.io/crates/v/ratcrate-tui.svg)](https://crates.io/crates/ratcrate-tui)
 [![Downloads](https://img.shields.io/crates/d/ratcrate-tui.svg)](https://crates.io/crates/ratcrate-tui)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
-
+[![Contributors](https://img.shields.io/github/contributors/ratcrate/ratcrate-tui)](https://github.com/ratcrate/ratcrate-tui/graphs/contributors)
 
 
 
