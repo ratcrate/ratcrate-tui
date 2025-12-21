@@ -5,8 +5,8 @@
 [![Documentation](https://docs.rs/ratcrate-tui/badge.svg)](https://docs.rs/ratcrate-tui)
 [![Security Audit](https://github.com/ratcrate/ratcrate-tui/actions/workflows/security-audit.yml/badge.svg)](https://github.com/ratcrate/ratcrate-tui/actions/workflows/security-audit.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) 
-[![Crates.io](https://img.shields.io/crates/v/ratcrate-tui.svg)](https://crates.io/crates/ratcrate-cli)
-[![Downloads](https://img.shields.io/crates/d/ratcrate-tui.svg)](https://crates.io/crates/ratcrate-cli)
+[![Crates.io](https://img.shields.io/crates/v/ratcrate-tui.svg)](https://crates.io/crates/ratcrate-tui)
+[![Downloads](https://img.shields.io/crates/d/ratcrate-tui.svg)](https://crates.io/crates/ratcrate-tui)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 
 
