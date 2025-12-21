@@ -23,6 +23,7 @@ Try out
  - Web version [Ratcrate](https://ratcrate.in) 
  - CLI version  [ratcrate-cli](https://github.com/ratcrate/ratcrate-cli)
 
+# ✨ Demo
 
 ![ratcrate-tui](https://github.com/user-attachments/assets/42708536-847d-483c-9305-f6f9a19facf6)
 
@@ -83,7 +84,9 @@ $> ratcrate-tui
 ## ⌨️ Controls & Commands
 The TUI operates in two main modes: Normal (Navigation) and Command (Input).
 
-## Normal Mode (Default)
+## ⌨️ Controls
+
+Normal Mode (Default)
 
 | Keybind | Action|
 | --- | --- | 
@@ -99,6 +102,8 @@ The TUI operates in two main modes: Normal (Navigation) and Command (Input).
 |`/` | Enter **Command** mode with a pre-typed `:search` prefix| 
 |`q` | Quit the application| 
 
+
+## ⌨️ Commands
 
 | command | description | example |
 | --- | --- | --- | 
