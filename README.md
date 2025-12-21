@@ -61,7 +61,7 @@ $> cargo install ratcrates
 ## Homebrew
 
 ```
-$> 
+$> brew install rvbug/tap/ratcrate-tui
 ```
 
 ## From Source
@@ -116,6 +116,20 @@ The TUI operates in two main modes: Normal (Navigation) and Command (Input).
 # Future Plans
 - [ ] Icon & beautification
 - [ ] Add Banner via `qbanner` library
+
+
+<br>
+
+<h1 align="center">Support</h1>
+
+<h3 align="center">
+  If you find my projects helpful or want to support my research and open-source work:
+</h3>
+<p align="center">
+  <a href="https://ko-fi.com/rvbugged">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Ko-fi" height="40">
+  </a>
+</p>
 
 
 
