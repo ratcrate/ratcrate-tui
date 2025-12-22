@@ -87,7 +87,7 @@ jobs:
           fi
       
       - name: Upload release assets
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.asset_name }}.tar.gz
           body: |
@@ -114,7 +114,7 @@ jobs:
         run: cargo deb
       
       - name: Upload .deb to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: target/debian/*.deb
         env:
